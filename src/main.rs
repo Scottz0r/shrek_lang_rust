@@ -1,61 +1,56 @@
-mod shrek_parser;
-mod byte_code;
-mod shrek_vm;
 mod builtins;
+mod byte_code;
 mod optimizer;
+mod shrek_parser;
+mod shrek_vm;
 
+use std::env;
 use std::fs;
-use std::path::Path;
-use std::io;
 
+use byte_code::ByteCode;
 use shrek_parser::*;
 use shrek_vm::ShrekVM;
 
 fn main() {
-    // TODO: Read this from file.
-    let test_data = read_file("demo.shrek").unwrap();
-
-    let tokenizer = Tokenizer::new();
-    let tokens = tokenizer.tokenize(&test_data).unwrap(); // TODO: Error checking.
-
-    // for t in tokens.iter() {
-    //     println!("Found {:?} token {:?} at {:?}", t.token_type, t.value, t.index);
-    // }
-
-    let syntax_tree = SyntaxTree::generate(&tokens).unwrap();
-
-    // for stx in syntax_tree.tree.iter() {
-    //     println!("Found token {:?}", stx.token.value);
-    //     for cstx in stx.children.iter() {
-    //         println!("  -> {:?}", cstx.token.value);
-    //     }
-    // }
-
-    let mut byte_code = generate_byte_code(&syntax_tree).unwrap();
-
-    println!("Unoptimized byte code ({} ops):", byte_code.len());
-    for bc in byte_code.iter() {
-        println!("{:?}", bc);
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Invalid arguments. Expected source file.");
+        std::process::exit(1);
     }
 
-    byte_code = optimizer::optimize(&byte_code);
-    println!("Optimized byte code ({} ops):", byte_code.len());
-    for bc in byte_code.iter() {
-        println!("{:?}", bc);
-    }
+    let input_code = match fs::read_to_string(&args[1]) {
+        Ok(text) => text,
+        Err(err) => {
+            eprintln!("Error reading source file: {:?}", err);
+            std::process::exit(1);
+        }
+    };
+
+    let byte_code = match parse_code(&input_code) {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("Parse error: {:?}", err);
+            std::process::exit(1);
+        }
+    };
 
     let mut vm = ShrekVM::new(byte_code);
     let exit_code = match vm.run() {
         Ok(x) => x,
-        Err(x) => {
-            println!("Error: {}", x.message);
-            -1
+        Err(err) => {
+            eprintln!("Shrek RuntimeError: {:?}", err);
+            3
         }
     };
 
     std::process::exit(exit_code);
 }
 
-fn read_file(filename: &str) -> io::Result<String> {
-    fs::read_to_string(filename)
+fn parse_code(input_code: &str) -> ParseResult<Vec<ByteCode>> {
+    let tokenizer = Tokenizer::new();
+    let tokens = tokenizer.tokenize(&input_code)?;
+    let syntax_tree = SyntaxTree::generate(&tokens)?;
+    let byte_code = generate_byte_code(&syntax_tree)?;
+
+    Ok(optimizer::optimize(&byte_code))
 }

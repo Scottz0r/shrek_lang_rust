@@ -1,6 +1,6 @@
-use std::vec::Vec;
-use crate::byte_code::*;
 use crate::builtins;
+use crate::byte_code::*;
+use std::vec::Vec;
 
 const MAX_OPTIMIZE_LOOPS: i32 = 32;
 
@@ -8,22 +8,30 @@ pub fn optimize(code: &Vec<ByteCode>) -> Vec<ByteCode> {
     // Must optimize easy constants before attempting to compress arithmetic.
     let mut result = optimize_easy_constants(code);
 
+    // Arithmetic can be optimized multiple times. For example: Doing two additions on constants in a row can be
+    // squashed into a single constant.
     let mut counter = 0;
     loop {
         let mut is_optimizing = false;
 
         match optimize_1_arg_arithmetic(&result) {
-            Some(optimized) => { is_optimizing = true; result = optimized; },
-            None => ()
+            Some(optimized) => {
+                is_optimizing = true;
+                result = optimized;
+            }
+            None => (),
         }
-        
+
         match optimize_2_arg_arithmetic(&result) {
-            Some(optimized) => { is_optimizing = true; result = optimized },
-            None => ()
+            Some(optimized) => {
+                is_optimizing = true;
+                result = optimized
+            }
+            None => (),
         };
 
+        // Loop exit when code was not optimized or the maximum number of optimizations has been reached.
         counter += 1;
-
         if !is_optimizing || counter >= MAX_OPTIMIZE_LOOPS {
             break;
         }
@@ -32,11 +40,11 @@ pub fn optimize(code: &Vec<ByteCode>) -> Vec<ByteCode> {
     result
 }
 
-/// Optimize code that is a Push0 then a chain of bumps. This will compress the operation into a 
+/// Optimize code that is a Push0 then a chain of bumps. This will compress the operation into a
 /// single push constant with the bumps combined into a single arg.
 fn optimize_easy_constants(code: &Vec<ByteCode>) -> Vec<ByteCode> {
     let mut result = Vec::new();
-    
+
     let mut push_index: Option<usize> = None;
     let mut bump_value = 0;
 
@@ -46,7 +54,10 @@ fn optimize_easy_constants(code: &Vec<ByteCode>) -> Vec<ByteCode> {
             // If there was a push and it was bumped, then it can be simplified into a single operation of
             // pushing a constant to the stack. Replace the push0 and bumps with a single operation.
             if bump_value > 0 {
-                result.push(ByteCode{ op_code: OpCode::PushConst, arg: bump_value });
+                result.push(ByteCode {
+                    op_code: OpCode::PushConst,
+                    arg: bump_value,
+                });
             } else {
                 // There were no bumps, so the push0 needs to be copied to the output code.
                 result.push(code[push_index.unwrap()].clone());
@@ -84,7 +95,7 @@ fn optimize_easy_constants(code: &Vec<ByteCode>) -> Vec<ByteCode> {
 /// Push Constant <= If this constant is an arithmetic function.
 /// Function Call
 /// ```
-/// 
+///
 // This series of commands can be turned into a single constant because arithmetic on constants will always be
 /// a constant value. This will cover cases where two constants are "mathed" into a single constant.
 fn optimize_2_arg_arithmetic(code: &Vec<ByteCode>) -> Option<Vec<ByteCode>> {
@@ -123,16 +134,20 @@ fn optimize_2_arg_arithmetic(code: &Vec<ByteCode>) -> Option<Vec<ByteCode>> {
             let mut r = 0;
             let mut do_replace = true;
 
-            match code[i].arg {
+            match func_num {
                 builtins::ops::ADD => r = v1 + v0,
                 builtins::ops::SUBTRACT => r = v1 - v0,
+                builtins::ops::MULTIPLY => r = v1 * v0,
                 builtins::ops::DIVIDE => r = v1 / v0,
                 builtins::ops::MOD_ => r = v1 % v0,
-                _ => do_replace = false
+                _ => do_replace = false,
             }
 
             if do_replace {
-                result.push(ByteCode{ op_code: OpCode::PushConst, arg: r });
+                result.push(ByteCode {
+                    op_code: OpCode::PushConst,
+                    arg: r,
+                });
                 was_replaced = true;
 
                 // Jump i by four operations to the next unoptimized code.
@@ -157,8 +172,12 @@ fn optimize_2_arg_arithmetic(code: &Vec<ByteCode>) -> Option<Vec<ByteCode>> {
 fn is_two_arg_arithmetic(byte_code: &ByteCode, func_num: i32) -> bool {
     if byte_code.op_code == OpCode::Func {
         match func_num {
-            builtins::ops::ADD | builtins::ops::SUBTRACT | builtins::ops::DIVIDE | builtins::ops::MOD_ => true,
-            _ => false
+            builtins::ops::ADD
+            | builtins::ops::SUBTRACT
+            | builtins::ops::MULTIPLY
+            | builtins::ops::DIVIDE
+            | builtins::ops::MOD_ => true,
+            _ => false,
         }
     } else {
         false
@@ -209,11 +228,14 @@ fn optimize_1_arg_arithmetic(code: &Vec<ByteCode>) -> Option<Vec<ByteCode>> {
                 builtins::ops::DOUBLE_VAL => r = v0 * 2,
                 builtins::ops::NEGATE => r = v0 * -1,
                 builtins::ops::SQUARE => r = v0 * v0,
-                _ => do_replace = false
+                _ => do_replace = false,
             }
 
             if do_replace {
-                result.push(ByteCode{op_code: OpCode::PushConst, arg: r});
+                result.push(ByteCode {
+                    op_code: OpCode::PushConst,
+                    arg: r,
+                });
                 was_replaced = true;
 
                 // Jump i by three operations to the next unoptimized code.
@@ -238,9 +260,148 @@ fn is_one_arg_arithmetic(byte_code: &ByteCode, func_num: i32) -> bool {
     if byte_code.op_code == OpCode::Func {
         match func_num {
             builtins::ops::DOUBLE_VAL | builtins::ops::NEGATE | builtins::ops::SQUARE => true,
-            _ => false
+            _ => false,
         }
     } else {
         false
+    }
+}
+
+// TODO: Tests
+#[rustfmt::skip]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_easy_constant_1() {
+        let byte_code = vec!(
+            ByteCode{ op_code: OpCode::Push0, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Label, arg: 1 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 }
+        );
+
+        let optimized = optimize_easy_constants(&byte_code);
+
+        assert_eq!(3, optimized.len());
+
+        assert_eq!(OpCode::PushConst, optimized[0].op_code);
+        assert_eq!(3, optimized[0].arg);
+
+        assert_eq!(OpCode::Label, optimized[1].op_code);
+        assert_eq!(1, optimized[1].arg);
+
+        assert_eq!(OpCode::Bump, optimized[2].op_code);
+        assert_eq!(0, optimized[2].arg);
+    }
+
+    #[test]
+    fn test_1_arg_arithmetic() {
+        let byte_code = vec!(
+            ByteCode{ op_code: OpCode::PushConst, arg: 3 },
+            ByteCode{ op_code: OpCode::PushConst, arg: 8 },
+            ByteCode{ op_code: OpCode::Func, arg: 0 }
+        );
+
+        let optimized = optimize_1_arg_arithmetic(&byte_code).unwrap();
+
+        assert_eq!(1, optimized.len());
+
+        assert_eq!(OpCode::PushConst, optimized[0].op_code);
+        assert_eq!(-3, optimized[0].arg);
+    }
+
+    #[test]
+    fn test_1_arg_arithmetic_no_op() {
+        let byte_code = vec!(
+            ByteCode{ op_code: OpCode::PushConst, arg: 3 },
+            ByteCode{ op_code: OpCode::PushConst, arg: 8 },
+            ByteCode{ op_code: OpCode::Label, arg: 8 },
+            ByteCode{ op_code: OpCode::Func, arg: 0 }
+        );
+
+        let optimized = optimize_1_arg_arithmetic(&byte_code);
+        assert!(optimized.is_none());
+    }
+
+    #[test]
+    fn test_2_arg_arithmetic() {
+        let byte_code = vec!(
+            ByteCode{ op_code: OpCode::PushConst, arg: 10 },
+            ByteCode{ op_code: OpCode::PushConst, arg: 3 },
+            ByteCode{ op_code: OpCode::PushConst, arg: 3 },
+            ByteCode{ op_code: OpCode::Func, arg: 0 }
+        );
+
+        let optimized = optimize_2_arg_arithmetic(&byte_code).unwrap();
+
+        assert_eq!(1, optimized.len());
+
+        assert_eq!(OpCode::PushConst, optimized[0].op_code);
+        assert_eq!(7, optimized[0].arg);
+    }
+
+    #[test]
+    fn test_2_arg_arithmetic_no_op() {
+        let byte_code = vec!(
+            ByteCode{ op_code: OpCode::PushConst, arg: 10 },
+            ByteCode{ op_code: OpCode::PushConst, arg: 3 },
+            ByteCode{ op_code: OpCode::PushConst, arg: 3 },
+            ByteCode{ op_code: OpCode::Label, arg: 2 },
+            ByteCode{ op_code: OpCode::Func, arg: 0 }
+        );
+
+        let optimized = optimize_2_arg_arithmetic(&byte_code);
+        assert!(optimized.is_none());
+    }
+
+    #[test]
+    fn test_multi_opt() {
+        // Test that constants are squashed and multiple arithmetic operations are done. This op code will do (3 * 4)^2
+        let byte_code = vec!(
+            // Push and bump to 3
+            ByteCode{ op_code: OpCode::Push0, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+
+            // Push and bump to 4
+            ByteCode{ op_code: OpCode::Push0, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+
+            // Push and bump to 4 for multiply function
+            ByteCode{ op_code: OpCode::Push0, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Func, arg: 0 },
+
+            // Push and bump to 9 for square
+            ByteCode{ op_code: OpCode::Push0, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Bump, arg: 0 },
+            ByteCode{ op_code: OpCode::Func, arg: 0 },
+        );
+
+        let optimized = optimize(&byte_code);
+
+        assert_eq!(1, optimized.len());
+
+        assert_eq!(OpCode::PushConst, optimized[0].op_code);
+        assert_eq!(144, optimized[0].arg);
     }
 }

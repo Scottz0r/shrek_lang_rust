@@ -1,45 +1,45 @@
 use crate::byte_code::{ByteCode, OpCode};
 
+use regex::Regex;
+use std::collections::HashMap;
 use std::fmt;
 use std::vec::Vec;
-use std::collections::HashMap;
-use regex::Regex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
     Whitespace,
     Command,
     Label,
-    Comment
+    Comment,
 }
 
 #[derive(Clone)]
 pub struct Token {
     pub token_type: TokenType,
     pub index: usize,
-    pub value: String
+    pub value: String,
 }
 
 pub struct Tokenizer {
     label_re: Regex,
     cmd_re: Regex,
     whitespace_regex: Regex,
-    comment_regex: Regex
+    comment_regex: Regex,
 }
 
 pub struct SyntaxNode {
     pub token: Token,
-    pub children: Vec<SyntaxNode> // Next pointer?
+    pub children: Vec<SyntaxNode>, // Next pointer?
 }
 
 pub struct SyntaxTree {
-    pub tree: Vec<SyntaxNode>
+    pub tree: Vec<SyntaxNode>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SyntaxError {
     pub index: usize,
-    pub message: String
+    pub message: String,
 }
 
 pub type ParseResult<T> = Result<T, SyntaxError>;
@@ -54,32 +54,40 @@ pub fn generate_byte_code(syntax_tree: &SyntaxTree) -> ParseResult<Vec<ByteCode>
             TokenType::Label => {
                 // Get or generate a label number for this label.
                 let arg = get_label_num(&mut label_map, &node.token.value);
-                let code = ByteCode{ op_code: OpCode::Label, arg: arg };
+                let code = ByteCode {
+                    op_code: OpCode::Label,
+                    arg: arg,
+                };
                 byte_code.push(code);
-            },
+            }
             TokenType::Command => {
                 let op_code = get_op_code(&node.token.value)
                     .ok_or_else(|| SyntaxError::new(node.token.index, "invalid command"))?;
-                
-                let mut code = ByteCode{ op_code, arg: 0};
+
+                let mut code = ByteCode { op_code, arg: 0 };
 
                 // Jumps will use the label's number as the argument.
                 if code.op_code == OpCode::Jump {
                     // This is assumed to be checked in the parser. Reasserting this assumption here.
-                    if node.children.is_empty() || node.children[0].token.token_type != TokenType::Label {
-                        return Err(SyntaxError::new(node.token.index, "jump must be followed by a label"));
+                    if node.children.is_empty()
+                        || node.children[0].token.token_type != TokenType::Label
+                    {
+                        return Err(SyntaxError::new(
+                            node.token.index,
+                            "jump must be followed by a label",
+                        ));
                     }
-                    
+
                     // Get or generate a label number for this label.
                     let child_label = &node.children[0].token.value;
                     code.arg = get_label_num(&mut label_map, child_label);
                 }
 
                 byte_code.push(code);
-            },
-            _ => () // Evertying else does not get byte code.
+            }
+            _ => (), // Evertying else does not get byte code.
         }
-    };
+    }
 
     Ok(byte_code)
 }
@@ -103,7 +111,7 @@ fn get_op_code(value: &str) -> Option<OpCode> {
         "R" => Some(OpCode::Bump),
         "E" => Some(OpCode::Func),
         "K" => Some(OpCode::Jump),
-        _ => None
+        _ => None,
     }
 }
 
@@ -113,7 +121,7 @@ impl Tokenizer {
             label_re: Regex::new(r"^![SHREK]+!").unwrap(),
             cmd_re: Regex::new(r"^[SHREK]").unwrap(),
             whitespace_regex: Regex::new(r"^\s+").unwrap(),
-            comment_regex: Regex::new(r"^#[^\n]*\n?").unwrap()
+            comment_regex: Regex::new(r"^#[^\n]*\n?").unwrap(),
         }
     }
 
@@ -125,7 +133,7 @@ impl Tokenizer {
             let token = self.next_token(index, code)?;
             index += token.value.len();
             tokens.push(token);
-        };
+        }
 
         Ok(tokens)
     }
@@ -133,7 +141,7 @@ impl Tokenizer {
     fn next_token(&self, index: usize, code: &str) -> ParseResult<Token> {
         let mtch: regex::Match;
         let token_type: TokenType;
-    
+
         let code_slice = &code[index..];
 
         if let Some(m) = self.label_re.find(code_slice) {
@@ -151,33 +159,36 @@ impl Tokenizer {
         } else {
             return Err(SyntaxError::new(index, "Invalid Token"));
         };
-    
+
         Ok(Token {
             token_type,
             index,
-            value: code_slice[mtch.start()..mtch.end()].to_string()
+            value: code_slice[mtch.start()..mtch.end()].to_string(),
         })
     }
 }
 
 impl SyntaxTree {
     pub fn generate(tokens: &Vec<Token>) -> ParseResult<SyntaxTree> {
-        let mut tree = SyntaxTree{ tree: Vec::new() };
+        let mut tree = SyntaxTree { tree: Vec::new() };
 
         let mut index = 0;
         while index < tokens.len() {
             let token = &tokens[index];
             match token.token_type {
                 TokenType::Command => {
-                    tree.tree.push(SyntaxTree::parse_command(tokens, &mut index)?);
-                },
+                    tree.tree
+                        .push(SyntaxTree::parse_command(tokens, &mut index)?);
+                }
                 TokenType::Label => {
                     tree.tree.push(SyntaxTree::parse_label(tokens, &mut index)?);
-                },
+                }
                 // All other tokens are ignored (whitespace, comments)
-                _ => { index += 1; }
+                _ => {
+                    index += 1;
+                }
             };
-        };
+        }
 
         Ok(tree)
     }
@@ -192,7 +203,10 @@ impl SyntaxTree {
         let op_code = get_op_code(&token.value)
             .ok_or_else(|| SyntaxError::new(token.index, "invalid operation code"))?;
 
-        let mut node = SyntaxNode { token: token.clone(), children: Vec::new() };
+        let mut node = SyntaxNode {
+            token: token.clone(),
+            children: Vec::new(),
+        };
 
         // Jumps must be followed by a label. Enforce that rule here.
         if let OpCode::Jump = op_code {
@@ -208,7 +222,7 @@ impl SyntaxTree {
                 return Err(SyntaxError::new(token.index, "missing command after jump"));
             };
         };
-        
+
         Ok(node)
     }
 
@@ -219,14 +233,20 @@ impl SyntaxTree {
         let token = &tokens[*index];
         *index += 1;
 
-        let node = SyntaxNode { token: token.clone(), children: Vec::new() };
+        let node = SyntaxNode {
+            token: token.clone(),
+            children: Vec::new(),
+        };
         Ok(node)
     }
 }
 
 impl SyntaxError {
     fn new(index: usize, message: &str) -> SyntaxError {
-        SyntaxError {index, message: message.to_string()}
+        SyntaxError {
+            index,
+            message: message.to_string(),
+        }
     }
 }
 

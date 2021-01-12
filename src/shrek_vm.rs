@@ -1,8 +1,8 @@
-use crate::byte_code::{ByteCode, OpCode};
 use crate::builtins;
-use std::vec::Vec;
+use crate::byte_code::{ByteCode, OpCode};
 use std::collections::HashMap;
 use std::fmt;
+use std::vec::Vec;
 
 pub struct ShrekVM {
     byte_code: Vec<ByteCode>,
@@ -10,12 +10,12 @@ pub struct ShrekVM {
     program_counter: usize,
     stack: Vec<i32>,
 
-    jump_table: HashMap<i32, usize>
+    jump_table: HashMap<i32, usize>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ShrekRuntimeError {
-    pub message: String
+    pub message: String,
 }
 
 pub type VmResult<T> = Result<T, ShrekRuntimeError>;
@@ -26,25 +26,25 @@ impl ShrekVM {
             byte_code,
             program_counter: 0,
             stack: Vec::new(),
-            jump_table: HashMap::new()
+            jump_table: HashMap::new(),
         }
     }
 
     pub fn push(&mut self, value: i32) {
         self.stack.push(value);
     }
-    
+
     pub fn pop(&mut self) -> VmResult<i32> {
         match self.stack.pop() {
             Some(x) => Ok(x),
-            None => Err(ShrekRuntimeError::new("cannot pop: stack is empty"))
+            None => Err(ShrekRuntimeError::new("cannot pop: stack is empty")),
         }
     }
 
     pub fn peek(&self) -> VmResult<i32> {
         match self.stack.last() {
             Some(x) => Ok(*x),
-            None => Err(ShrekRuntimeError::new("cannot peek: stack is empty"))
+            None => Err(ShrekRuntimeError::new("cannot peek: stack is empty")),
         }
     }
 
@@ -83,14 +83,16 @@ impl ShrekVM {
         }
 
         match self.byte_code[self.program_counter].op_code {
-            OpCode::Label => { self.step_code(); },
+            OpCode::Label => {
+                self.step_code();
+            }
             OpCode::Push0 => self.op_push0()?,
             OpCode::Pop => self.op_pop()?,
             OpCode::Bump => self.op_bump()?,
             OpCode::Func => self.op_func()?,
             OpCode::Jump => self.op_jump()?,
             OpCode::PushConst => self.op_push_const()?,
-            _ => ()
+            _ => (),
         }
 
         Ok(())
@@ -139,18 +141,18 @@ impl ShrekVM {
             0 => {
                 // Normal Jump
                 true
-            },
+            }
             1 => {
                 // Jump if 0
                 let s1 = self.peek()?;
                 s1 == 0
-            },
+            }
             2 => {
                 // Jump if negative
                 let s1 = self.peek()?;
                 s1 < 0
-            },
-            _ => { 
+            }
+            _ => {
                 return Err(ShrekRuntimeError::new("invalid jump type"));
             }
         };
@@ -168,8 +170,8 @@ impl ShrekVM {
                 // Move program counter 1 past the label to save an opeartion.
                 self.program_counter = (*x as usize) + 1;
                 Ok(())
-            },
-            None => Err(ShrekRuntimeError::new("jump label not found in jump map"))
+            }
+            None => Err(ShrekRuntimeError::new("jump label not found in jump map")),
         }
     }
 
@@ -185,7 +187,9 @@ impl ShrekVM {
 
 impl ShrekRuntimeError {
     pub fn new(message: &str) -> ShrekRuntimeError {
-        ShrekRuntimeError{ message: message.to_string() }
+        ShrekRuntimeError {
+            message: message.to_string(),
+        }
     }
 }
 
