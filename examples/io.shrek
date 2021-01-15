@@ -1,0 +1,8 @@
+SE # Call input function
+
+!S!
+SRE # Call output function
+H # Pop character from stack
+SRK!H! # Jump to end if value is 0
+SK!S! # Jump to !S!
+!H!
