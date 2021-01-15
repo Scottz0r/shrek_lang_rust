@@ -1,7 +1,5 @@
 # SHREK Lang
 
-<img src="https://media.giphy.com/media/10Ug6rDDuG3YoU/giphy.gif" />
-
 Are you an all star? Do you need a programming language that helps you get your game on? Do you need a language that will let you go play?
 
 SHREK is a programming language that only uses the characters "SHREK!" SHREK is stack based, where commands manipulate the top values on the stack.
@@ -134,6 +132,4 @@ Put a copy of `{1}` on the top of the stack
 
 ## Optimization
 
-"Ugh, this language is slow," is what you are thinking. But not to fear. The interperter will detect and optimize constant values. Long chains of push and bumps will be squashed into a single push_constant command in the op code. The optimizer will also optimize arithmetic on constant values.
-
-<img src="https://media.giphy.com/media/bLFQRUZGisPJe/giphy.gif">
+"Ugh, this language is slow," is what you are thinking. But not to fear. The interpreter will detect and optimize constant values. Long chains of push and bumps will be squashed into a single push_constant command in the op code. The optimizer will also optimize arithmetic on constant values.
